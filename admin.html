@@ -1,0 +1,45 @@
+<!doctype html><html lang="id"><meta charset="utf-8"><meta name="robots" content="noindex,nofollow"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin Brankas</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<style>body{font:14px system-ui,sans-serif;background:#0b1220;color:#e5e7eb;max-width:900px;margin:auto;padding:1rem}
+.c{background:#111c33;border:1px solid #ffffff1f;border-radius:14px;padding:12px 14px;margin:10px 0}h3{margin:18px 0 4px}small{color:#94a3b8}
+button,select,input{font:inherit;border-radius:10px;border:1px solid #ffffff2a;background:#1b2a4a;color:#fff;padding:7px 12px;cursor:pointer}
+button.ok{background:#16a34a}button.no{background:#dc2626}label{display:block;margin:2px 0}canvas{width:100%;margin:8px 0;border-radius:10px;background:#fff}
+.t{font-size:12px;border-radius:99px;padding:1px 8px;background:#334155}</style>
+<body><h2>🔐 Admin Brankas Dokumen</h2>
+<div id="login"><p>Masuk sebagai pemilik (tautan masuk dikirim ke email).</p><input id="em" type="email" placeholder="email pemilik"> <button id="go">Kirim tautan</button> <small id="lm"></small></div>
+<div id="app" hidden><button id="out">Keluar</button> <button id="notif">Aktifkan notifikasi browser</button>
+<h3>Lihat dokumen (tercatat &amp; dinotifikasi)</h3><select id="ds"></select> <button id="ob">Buka</button><div id="ov"></div>
+<h3>Menunggu persetujuan</h3><div id="pend"></div><h3>Akses aktif</h3><div id="act"></div><h3>Log pembukaan terakhir</h3><div id="log"></div></div>
+<script>
+const C={url:'https://izubgbpgfxikvygrgycc.supabase.co',key:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6dWJnYnBnZnhpa3Z5Z3JneWNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQxNDAwMjcsImV4cCI6MjEwOTcxNjAyN30.C2Qg4-pL6SxBvf-pMgTyXML2ZqQwd3T7wgjwdEuXK64'};
+const sb=supabase.createClient(C.url,C.key),$=id=>document.getElementById(id);
+const E=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let docs=[],seen=null;const T=id=>(docs.find(d=>d.id===id)||{}).title||id,F=d=>new Date(d).toLocaleString('id-ID');
+sb.auth.onAuthStateChange((_,s)=>{$('login').hidden=!!s;$('app').hidden=!s;if(s)init()});
+$('go').onclick=async()=>{const {error}=await sb.auth.signInWithOtp({email:$('em').value,options:{shouldCreateUser:false,emailRedirectTo:location.href.split('#')[0]}});$('lm').textContent=error?error.message:'Cek email Anda.'};
+$('out').onclick=()=>sb.auth.signOut();
+$('notif').onclick=()=>Notification.requestPermission();
+async function init(){const r=await sb.from('documents').select('id,title,level').order('sort');docs=r.data||[];
+ $('ds').innerHTML=docs.map(d=>`<option value="${E(d.id)}">${E(d.title)}</option>`).join('');load()}
+async function load(){
+ const {data:rq}=await sb.from('requests').select('*').order('created_at',{ascending:false}).limit(60);
+ const {data:lg}=await sb.from('access_log').select('*').order('created_at',{ascending:false}).limit(30);
+ const rows=rq||[],now=Date.now();
+ const pend=rows.filter(r=>r.status==='pending'),act=rows.filter(r=>r.status==='approved'&&new Date(r.expires_at)>now);
+ if(seen&&pend.some(r=>!seen.has(r.id))){document.title='🔔 Permintaan baru!';if(Notification.permission==='granted')new Notification('Permintaan akses dokumen baru')}
+ seen=new Set(pend.map(r=>r.id));
+ $('pend').innerHTML=pend.map(r=>`<div class="c" id="r${r.id}"><b>${E(r.name)}</b> &lt;${E(r.email)}&gt; · ${E(r.org||'-')}<br><small>${F(r.created_at)} · IP ${E(r.ip)}</small> ${r.doc_ids.map(d=>`<label><input type="checkbox" class="d" value="${E(d)}" ${(docs.find(x=>x.id===d)||{}).level==='umum'?'checked':''}> ${E(T(d))}</label>`).join('')}
+ <small>Dokumen 🔒 rahasia tidak dicentang otomatis.</small><br>
+ <select><option value="1">1 jam</option><option value="24" selected>24 jam</option><option value="168">7 hari</option></select>
+ <button class="ok" data-a="approved" data-id="${r.id}">Setujui</button> <button class="no" data-a="denied" data-id="${r.id}">Tolak</button></div>`).join('')||'<small>Tidak ada.</small>';
+ $('act').innerHTML=act.map(r=>`<div class="c"><b>${E(r.name)}</b> &lt;${E(r.email)}&gt;<br><small>s.d. ${F(r.expires_at)}</small><br>${r.approved_docs.map(d=>`<span class="t">${E(T(d))}</span>`).join(' ')}<br><button class="no" data-a="revoked" data-id="${r.id}">Cabut akses</button></div>`).join('')||'<small>Tidak ada.</small>';
+ $('log').innerHTML=(lg||[]).map(l=>`<div><small>${F(l.created_at)}</small> ${E(l.actor)} → ${E(T(l.doc_id))}</div>`).join('')||'<small>Kosong.</small>'}
+document.body.onclick=async e=>{const b=e.target.closest('button[data-a]');if(!b)return;const id=b.dataset.id,a=b.dataset.a,p={status:a,decided_at:new Date().toISOString()};
+ if(a==='approved'){const c=$('r'+id),sel=[...c.querySelectorAll('.d:checked')].map(x=>x.value);if(!sel.length)return alert('Pilih minimal satu dokumen');
+  p.approved_docs=sel;p.expires_at=new Date(Date.now()+ +c.querySelector('select').value*36e5).toISOString()}
+ await sb.from('requests').update(p).eq('id',id);document.title='Admin Brankas';load()};
+$('ob').onclick=async()=>{const {data,error}=await sb.functions.invoke('vault',{body:{action:'open',owner:true,doc_id:$('ds').value}});
+ const box=$('ov');box.innerHTML='';if(error||!data?.urls)return box.textContent='Gagal / berkas belum diunggah';
+ for(const u of data.urls){const bm=await createImageBitmap(await (await fetch(u)).blob()),c=document.createElement('canvas');c.width=bm.width;c.height=bm.height;c.getContext('2d').drawImage(bm,0,0);box.appendChild(c)}};
+setInterval(()=>{if(!$('app').hidden)load()},15000);
+</script></body></html>

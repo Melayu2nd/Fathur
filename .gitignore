@@ -1,0 +1,6 @@
+dokumen_privat/
+*.pdf
+.env
+*.env
+supabase/.temp/
+supabase/.branches/
